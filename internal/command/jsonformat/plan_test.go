@@ -7452,6 +7452,96 @@ func TestResourceChange_sensitiveVariable(t *testing.T) {
 	runTestCases(t, testCases)
 }
 
+func TestResourceChange_writeOnlyAttributes(t *testing.T) {
+	testCases := map[string]testCase{
+		"write-only attribute create": {
+			Action: plans.Create,
+			Mode:   addrs.ManagedResourceMode,
+			Before: cty.NullVal(cty.Object(map[string]cty.Type{
+				"id":         cty.String,
+				"write_only": cty.String,
+				"conn_info": cty.Object(map[string]cty.Type{
+					"user":                    cty.String,
+					"write_only_set_password": cty.String,
+				}),
+			})),
+			After: cty.ObjectVal(map[string]cty.Value{
+				"id":         cty.StringVal("i-02ae66f368e8518a9"),
+				"write_only": cty.NullVal(cty.String),
+				"conn_info": cty.ObjectVal(map[string]cty.Value{
+					"user":                    cty.StringVal("not-secret"),
+					"write_only_set_password": cty.NullVal(cty.String),
+				}),
+			}),
+			Schema: &configschema.Block{
+				Attributes: map[string]*configschema.Attribute{
+					"id":         {Type: cty.String, Optional: true, Computed: true},
+					"write_only": {Type: cty.String, WriteOnly: true},
+					"conn_info": {
+						NestedType: &configschema.Object{
+							Nesting: configschema.NestingSingle,
+							Attributes: map[string]*configschema.Attribute{
+								"user":                    {Type: cty.String, Optional: true},
+								"write_only_set_password": {Type: cty.String, Optional: true, Sensitive: true, WriteOnly: true},
+							},
+						},
+					},
+				},
+			},
+			ExpectedOutput: `  # test_instance.example will be created
+  + resource "test_instance" "example" {
+      + conn_info = {
+          + user                    = "not-secret"
+          + write_only_set_password = (sensitive, write-only attribute)
+        }
+      + id         = "i-02ae66f368e8518a9"
+      + write_only = (write-only attribute)
+    }`,
+		},
+		"write-only attribute update": {
+			Action: plans.Update,
+			Mode:   addrs.ManagedResourceMode,
+			Before: cty.ObjectVal(map[string]cty.Value{
+				"id":         cty.StringVal("i-02ae66f368e8518a9"),
+				"write_only": cty.NullVal(cty.String),
+				"conn_info": cty.ObjectVal(map[string]cty.Value{
+					"user":                    cty.StringVal("not-secret"),
+					"write_only_set_password": cty.NullVal(cty.String),
+				}),
+			}),
+			After: cty.ObjectVal(map[string]cty.Value{
+				"id":         cty.StringVal("i-02ae66f368e8518a9"),
+				"write_only": cty.NullVal(cty.String),
+				"conn_info": cty.ObjectVal(map[string]cty.Value{
+					"user":                    cty.StringVal("not-secret"),
+					"write_only_set_password": cty.NullVal(cty.String),
+				}),
+			}),
+			Schema: &configschema.Block{
+				Attributes: map[string]*configschema.Attribute{
+					"id":         {Type: cty.String, Optional: true, Computed: true},
+					"write_only": {Type: cty.String, WriteOnly: true},
+					"conn_info": {
+						NestedType: &configschema.Object{
+							Nesting: configschema.NestingSingle,
+							Attributes: map[string]*configschema.Attribute{
+								"user":                    {Type: cty.String, Optional: true},
+								"write_only_set_password": {Type: cty.String, Optional: true, Sensitive: true, WriteOnly: true},
+							},
+						},
+					},
+				},
+			},
+			ExpectedOutput: `  # test_instance.example will be updated in-place
+  ~ resource "test_instance" "example" {
+        id        = "i-02ae66f368e8518a9"
+        # (1 unchanged attribute hidden)
+    }`,
+		},
+	}
+	runTestCases(t, testCases)
+}
+
 func TestResourceChange_moved(t *testing.T) {
 	prevRunAddr := addrs.Resource{
 		Mode: addrs.ManagedResourceMode,
